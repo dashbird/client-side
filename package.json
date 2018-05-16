@@ -1,0 +1,24 @@
+{
+  "name": "subscriber",
+  "version": "1.0.0",
+  "description": "Subscriber",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dashbird/subscriber.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dashbird/subscriber/issues"
+  },
+  "homepage": "https://github.com/dashbird/subscriber#readme",
+  "dependencies": {
+    "aws-sdk": "^2.241.1",
+    "request": "^2.86.0",
+    "request-promise": "^4.2.2"
+  }
+}
