@@ -1,25 +1,38 @@
 'use strict'
 
 const AWS = require('aws-sdk')
+AWS.config.setPromisesDependency(null);
 const CWLogs = new AWS.CloudWatchLogs()
-const promisify = require('util').promisify
-const putSubscriptionFilter = promisify(CWLogs.putSubscriptionFilter)
 const request = require('request-promise')
 
 exports.handler = async function (event, context) {
 
-  const client = await request('https://mkhjm850ze.execute-api.us-east-1.amazonaws.com/prod/status?externalId=123')
+  console.log('request')
+  // const client = await request('https://mkhjm850ze.execute-api.us-east-1.amazonaws.com/prod/status?externalId=123')
+  const client = {
+    status: 'enabled',
+    lambdas: [{
+      logGroup: '/aws/lambda/random',
+      destination: 'arn:aws:logs:us-east-1:458024764010:destination:dashbird-us-east-1'
+    },
+    {
+      logGroup: '/aws/lambda/whats-my-ip',
+      destination: 'arn:aws:logs:us-east-1:458024764010:destination:dashbird-us-east-1'
+    }]
+  }
+  console.log('request', JSON.stringify(client, null, 4))
 
   if(client.status === 'enabled') {
-    for (lambda of client.lambdas) {
-      await putSubscriptionFilter({
+    for (const lambda of client.lambdas) {
+      console.log(`subscribing ${lambda.logGroup} ${lambda.destination}`)
+      await CWLogs.putSubscriptionFilter({
         destinationArn: lambda.destination,
-        filterName: `dashbird-streamer-${lambda.name}`,
+        filterName: `dashbird-streamer-${lambda.logGroup}`,
         filterPattern: '-END',
-        logGroupName: lambda.name,
+        logGroupName: lambda.logGroup,
         distribution: 'ByLogStream'
       })
-      console.log(`subscribed ${lambda.name} to kinesis stream`)
+      console.log(`subscribed ${lambda.logGroup} to kinesis stream`)
     }
   } else {
     // TODO: remove all subscriptions
