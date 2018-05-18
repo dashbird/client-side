@@ -17,8 +17,9 @@
   },
   "homepage": "https://github.com/dashbird/subscriber#readme",
   "dependencies": {
-    "aws-sdk": "^2.241.1",
+    "aws-sdk": "^2.242.1",
     "request": "^2.86.0",
     "request-promise": "^4.2.2"
-  }
+  },
+  "devDependencies": {}
 }
