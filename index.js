@@ -12,10 +12,12 @@ exports.handler = async function (event, context) {
   const client = {
     status: 'enabled',
     lambdas: [{
+      region: 'us-east-1',
       logGroup: '/aws/lambda/random',
       destination: 'arn:aws:logs:us-east-1:458024764010:destination:dashbird-us-east-1'
     },
     {
+      region: 'us-east-1',
       logGroup: '/aws/lambda/whats-my-ip',
       destination: 'arn:aws:logs:us-east-1:458024764010:destination:dashbird-us-east-1'
     }]
@@ -27,7 +29,7 @@ exports.handler = async function (event, context) {
       console.log(`subscribing ${lambda.logGroup} ${lambda.destination}`)
       await CWLogs.putSubscriptionFilter({
         destinationArn: lambda.destination,
-        filterName: `dashbird-streamer-${lambda.logGroup}`,
+        filterName: lambda.region,
         filterPattern: '-END',
         logGroupName: lambda.logGroup,
         distribution: 'ByLogStream'
