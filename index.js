@@ -31,7 +31,7 @@ exports.handler = async function (event, context) {
         filterPattern: '-END',
         logGroupName: lambda.logGroup,
         distribution: 'ByLogStream'
-      })
+      }).promise()
       console.log(`subscribed ${lambda.logGroup} to kinesis stream`)
     }
   } else {
