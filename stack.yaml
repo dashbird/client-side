@@ -15,19 +15,95 @@ Resources:
       Policies:
       - PolicyName: root
         PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-            - logs:*
-            Resource: arn:aws:logs:*:*:*
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "logs:PutSubscriptionFilter",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "logs:DescribeSubscriptionFilters",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "logs:DeleteSubscriptionFilter",
+                "Resource": "*"
+              }
+            ]
+          }
+
+  DashbirdIntegrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+            - arn:aws:iam::458024764010:root
+          Action:
+          - sts:AssumeRole
+          Condition:
+            StringEquals:
+              sts:ExternalId: "123"
+      Path: "/"
+      Policies:
+      - PolicyName: dashbird-policy
+        PolicyDocument:
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "logs:FilterLogEvents",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "logs:describeLogStreams",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "lambda:listFunctions",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "lambda:listTags",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "xray:Get*",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": "xray:BatchGet*",
+                "Resource": "*"
+              }
+            ]
+          }
 
   SubscriberLambda: 
     Type: "AWS::Lambda::Function"
-    Properties: 
+    Properties:
       Handler: "index.handler"
+      Environment:
+        Variables:
+          EXTERNAL_ID: "123"
+          DASHBIRD_ROLE_ARN: 
+            Fn::GetAtt:
+              - "DashbirdIntegrationRole"
+              - "Arn"
       Role: 
-        Fn::GetAtt: 
+        Fn::GetAtt:
           - "LambdaExecutionRole"
           - "Arn"
       Code: 
@@ -39,9 +115,9 @@ Resources:
     Type: "AWS::Events::Rule"
     Properties: 
       Description: "ScheduledRule"
-      ScheduleExpression: "rate(1 minute)"
+      ScheduleExpression: "rate(10 minutes)"
       State: "ENABLED"
-      Targets: 
+      Targets:
         - 
           Arn: 
             Fn::GetAtt: 
@@ -60,3 +136,14 @@ Resources:
         Fn::GetAtt: 
           - "ScheduledRule"
           - "Arn"
+
+Outputs:
+  DashbirdIntegrationRoleArn:
+    Description: "Arn of integration role."
+    Value:
+      Fn::GetAtt:
+        - DashbirdIntegrationRole
+        - Arn
+  DashbirdIntegrationRoleExternalId:
+    Description: "Role external Id"
+    Value: "123"
