@@ -73,7 +73,7 @@ async function upsertObservable (client, observable) {
       return putObservable(client, observable)
     }
   } catch (ex) {
-    // Ignroe ResourceNotFoundException
+    // Ignore ResourceNotFoundException
     if (ex.code !== 'ResourceNotFoundException') {
       console.log(`Could not import extId ${externalId} logGroup ${observable.logGroup} with exception ${ex.toString()}`)
     }
