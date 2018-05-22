@@ -4,10 +4,12 @@ const AWS = require('aws-sdk')
 AWS.config.setPromisesDependency(null);
 const CWLogs = new AWS.CloudWatchLogs()
 const request = require('request-promise')
+const externalId = process.env.EXTERNAL_ID;
+const roleArn = process.env.DASHBIRD_ROLE_ARN;
 
 exports.handler = async function (event, context) {
 
-  console.log('request')
+  console.log('request');
   // const client = await request('https://mkhjm850ze.execute-api.us-east-1.amazonaws.com/prod/status?externalId=123')
   const client = {
     status: 'enabled',
