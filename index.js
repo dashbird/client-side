@@ -33,7 +33,7 @@ exports.handler = async function (event, context) {
     promises.push(updateRoleArn())
   }
 
-  Promise.all(promises)
+  await Promise.all(promises)
 
   return true
 }
