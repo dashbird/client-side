@@ -23,22 +23,17 @@ exports.handler = async function (event, context) {
     console.log(`Client is active, processing ${client.observables.length} observables.`)
 
     promises = _.map(regionGroups, async (logGroups, region) => {
-      let CWLogs = new AWS.CloudWatchLogs({
-        region: region
-      })
-
+      const CWLogs = new AWS.CloudWatchLogs({ region: region })
       return processLogGroups(CWLogs, logGroups)
     })
   } else {
     promises.push(updateRoleArn())
   }
 
-  await Promise.all(promises)
-
-  return true
+  return Promise.all(promises)
 }
 
-async function updateRoleArn() {
+async function updateRoleArn () {
   return request({
     method: 'POST',
     uri: `${BASE_URL}/${externalId}/delegation`,
@@ -49,41 +44,43 @@ async function updateRoleArn() {
   })
 }
 
-async function processLogGroups(client, groups) {
-  const requests = _.map(groups, (observable) => {
-    if (observable.action.toLowerCase() === 'upsert') {
-      console.log(`Upserting`, observable)
-      return upsertObservable(client, observable)
-    } else {
-      console.log(`Removing`, observable)
-      return removeObservable(client, observable)
+async function processLogGroups (client, groups) {
+  const requests = _.map(groups, async (observable) => {
+    try {
+      let result = null
+      if (observable.action.toLowerCase() === 'upsert') {
+        console.log(`Upserting`, observable)
+        result = await upsertObservable(client, observable)
+      } else {
+        console.log(`Removing`, observable)
+        result = await removeObservable(client, observable)
+      }
+      if (result) {
+        return logGroupSuccess(observable)
+      }
+    } catch (error) {
+      return logGroupError(error, observable)
     }
   })
   return Promise.all(requests)
 }
 
-async function upsertObservable(client, observable) {
-  return client.describeSubscriptionFilters({
+async function upsertObservable (client, observable) {
+  const existingFilters = await client.describeSubscriptionFilters({
     logGroupName: observable.logGroup
-  }).promise().then((existingFilters) => {
-    if (existingFilters.subscriptionFilters.length > 0) {
-      let isDashbirdFilter = _.some(existingFilters.subscriptionFilters, (filter) => filter.destinationArn.indexOf('458024764010') !== -1)
-      if (isDashbirdFilter) {
-        return putObservable(client, observable)
-      } else {
-        console.log(`Log group ${observable.logGroup} has a subscription filter belonging to someone else, skipping.`)
-      }
-    } else {
-      return putObservable(client, observable)
-    }
-  }, (err) => {
-    return logGroupError(err, observable);
-  })
+  }).promise()
+  const isDashbirdFilter = _.find(existingFilters.subscriptionFilters, (filter) => filter.destinationArn.includes('458024764010'))
+
+  if (!existingFilters.subscriptionFilters.length || isDashbirdFilter) {
+    return putObservable(client, observable)
+  } else {
+    console.log(`Log group ${observable.logGroup} has a subscription filter belonging to someone else, skipping.`)
+  }
 }
 
-async function logGroupError(err, observable) {
-  console.log(`Reporting error`, err.code, `\nwith observable`, observable);
-  let body = {
+async function logGroupError (err, observable) {
+  console.log(`Reporting error`, err.code, `with observable`, observable)
+  const body = {
     action: observable.action,
     status: 'FAIL',
     error: err.code === 'ResourceNotFoundException' ? err.code : null
@@ -97,7 +94,21 @@ async function logGroupError(err, observable) {
   })
 }
 
-async function putObservable(client, observable) {
+async function logGroupSuccess (observable) {
+  console.log('Posting results about observable', observable)
+  return request({
+    method: 'POST',
+    uri: `${BASE_URL}/${externalId}/loggroup/${observable.id}`,
+    json: true,
+    body: {
+      action: observable.action,
+      status: 'SUCCESS',
+      error: null
+    }
+  })
+}
+
+async function putObservable (client, observable) {
   console.log(`Adding subscription filter to log group ${observable.logGroup} with filter name ${observable.region}`)
 
   return client.putSubscriptionFilter({
@@ -106,27 +117,14 @@ async function putObservable(client, observable) {
     filterPattern: '-END',
     logGroupName: observable.logGroup,
     distribution: 'ByLogStream'
-  }).promise().then(() => {
-    return request({
-      method: 'POST',
-      uri: `${BASE_URL}/${externalId}/loggroup/${observable.id}`,
-      json: true,
-      body: {
-        action: observable.action,
-        status: 'SUCCESS',
-        error: null
-      }
-    })
-  })
+  }).promise()
 }
 
-async function removeObservable(client, observable) {
+async function removeObservable (client, observable) {
   console.log(`Removing log group ${observable.logGroup} with filter name ${observable.region}`)
 
   return client.deleteSubscriptionFilter({
     filterName: observable.region,
     logGroupName: observable.logGroup
-  }).promise().catch((err) => {
-    return logGroupError(err, observable)
-  });
+  }).promise()
 }
