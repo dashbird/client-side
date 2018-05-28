@@ -5,43 +5,22 @@ const request = require('request-promise')
 const _ = require('lodash')
 const Promise = require('bluebird')
 
-const externalId = process.env.EXTERNAL_ID
-const roleArn = process.env.DASHBIRD_ROLE_ARN
+const EXTERNAL_ID = process.env.EXTERNAL_ID
+const ROLE_ARN = process.env.DASHBIRD_ROLE_ARN
 const BASE_URL = 'https://configuration.dashbird.io/aws/cloudwatch'
 
-exports.handler = async function (event, context) {
-  const client = await request({
-    method: 'GET',
-    uri: `${BASE_URL}/${externalId}/loggroup`,
-    json: true
-  })
-
-  let promises = []
-
-  if (client.status.toLowerCase() === 'active') {
-    let regionGroups = _.groupBy(client.observables, (o) => o.region)
-    console.log(`Client is active, processing ${client.observables.length} observables.`)
-
-    promises = _.map(regionGroups, async (logGroups, region) => {
-      const CWLogs = new AWS.CloudWatchLogs({ region: region })
-      return processLogGroups(CWLogs, logGroups)
-    })
-  } else {
-    promises.push(updateRoleArn())
-  }
-
-  return Promise.all(promises)
-}
-
 async function updateRoleArn () {
-  return request({
+  const response = await request({
     method: 'POST',
-    uri: `${BASE_URL}/${externalId}/delegation`,
-    body: {
-      roleArn: roleArn
-    },
-    json: true
+    uri: `${BASE_URL}/${EXTERNAL_ID}/delegation`,
+    json: true,
+    body: { roleArn: ROLE_ARN }
   })
+
+  if (response.status === 'OK') {
+    console.log('Set role arn, exiting with failure')
+    throw new Error('role arn set, retrying')
+  }
 }
 
 async function processLogGroups (client, groups) {
@@ -88,7 +67,7 @@ async function logGroupError (err, observable) {
 
   return request({
     method: 'POST',
-    uri: `${BASE_URL}/${externalId}/loggroup/${observable.id}`,
+    uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup/${observable.id}`,
     json: true,
     body: body
   })
@@ -98,7 +77,7 @@ async function logGroupSuccess (observable) {
   console.log('Posting results about observable', observable)
   return request({
     method: 'POST',
-    uri: `${BASE_URL}/${externalId}/loggroup/${observable.id}`,
+    uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup/${observable.id}`,
     json: true,
     body: {
       action: observable.action,
@@ -127,4 +106,29 @@ async function removeObservable (client, observable) {
     filterName: observable.region,
     logGroupName: observable.logGroup
   }).promise()
+}
+
+async function processAllLogGroups (observables) {
+  let regionGroups = _.groupBy(observables, (o) => o.region)
+  console.log(`Client is active, processing ${observables.length} observables.`)
+
+  const promises = _.map(regionGroups, async (logGroups, region) => {
+    const CWLogs = new AWS.CloudWatchLogs({ region: region })
+    return processLogGroups(CWLogs, logGroups)
+  })
+
+  return Promise.all(promises)
+}
+
+exports.handler = async function (event, context) {
+  const client = await request({
+    method: 'GET',
+    uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup`,
+    json: true
+  })
+
+  if (client.status.toLowerCase() === 'active') {
+    return processAllLogGroups(client.observables)
+  }
+  return updateRoleArn()
 }
