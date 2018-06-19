@@ -1,5 +1,3 @@
-'use strict'
-
 const AWS = require('aws-sdk')
 const request = require('request-promise')
 const _ = require('lodash')
@@ -121,14 +119,19 @@ async function processAllLogGroups (observables) {
 }
 
 exports.handler = async function (event, context) {
-  const client = await request({
-    method: 'GET',
-    uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup`,
-    json: true
-  })
+  try {
+    const client = await request({
+      method: 'GET',
+      uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup`,
+      json: true
+    })
 
-  if (client.status.toLowerCase() === 'active') {
-    return processAllLogGroups(client.observables)
+    if (client.status.toLowerCase() === 'active') {
+      return processAllLogGroups(client.observables)
+    }
+    return updateRoleArn()
+  } catch (error) {
+    console.error(error)
+    return context.fail(error)
   }
-  return updateRoleArn()
 }
