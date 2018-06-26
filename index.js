@@ -6,6 +6,7 @@ const Promise = require('bluebird')
 const EXTERNAL_ID = process.env.EXTERNAL_ID
 const ROLE_ARN = process.env.DASHBIRD_ROLE_ARN
 const BASE_URL = 'https://configuration.dashbird.io/aws/cloudwatch'
+// const BASE_URL = 'http://localhost:3000/aws/cloudwatch'
 
 async function updateRoleArn () {
   const response = await request({
@@ -26,29 +27,42 @@ async function processLogGroups (client, groups) {
     try {
       let result = null
       if (observable.action.toLowerCase() === 'upsert') {
-        console.log(`Upserting`, observable)
+        console.log('Upserting', observable)
         result = await upsertObservable(client, observable)
       } else {
-        console.log(`Removing`, observable)
+        console.log('Removing', observable)
         result = await removeObservable(client, observable)
       }
       if (result) {
         return logGroupSuccess(observable)
       }
     } catch (error) {
+      console.log('Error', error)
       return logGroupError(error, observable)
     }
   })
   return Promise.all(requests)
 }
 
-async function upsertObservable (client, observable) {
-  const existingFilters = await client.describeSubscriptionFilters({
-    logGroupName: observable.logGroup
-  }).promise()
-  const isDashbirdFilter = _.find(existingFilters.subscriptionFilters, (filter) => filter.destinationArn.includes('458024764010'))
+function findDashbirdFilter (filters) {
+  return _.find(filters, (filter) => filter.destinationArn.includes('458024764010'))
+}
 
-  if (!existingFilters.subscriptionFilters.length || isDashbirdFilter) {
+async function findExistingFilters (client, logGroupName) {
+  const filters = await client.describeSubscriptionFilters({ logGroupName }).promise()
+  return filters.subscriptionFilters
+}
+
+async function upsertObservable (client, observable) {
+  const existingFilters = await findExistingFilters(client, observable.logGroup)
+  const filter = findDashbirdFilter(existingFilters)
+
+  if (!existingFilters.length || filter) {
+    if (filter && (filter.destinationArn !== observable.destination || filter.filterName !== observable.region)) {
+      console.log('Filter has changed, removing the old filter', observable)
+      // Lets force remove the filter before applying a new one
+      await removeObservable(client, observable)
+    }
     return putObservable(client, observable)
   } else {
     console.log(`Log group ${observable.logGroup} has a subscription filter belonging to someone else, skipping.`)
@@ -73,6 +87,7 @@ async function logGroupError (err, observable) {
 
 async function logGroupSuccess (observable) {
   console.log('Posting results about observable', observable)
+
   return request({
     method: 'POST',
     uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup/${observable.id}`,
@@ -100,10 +115,26 @@ async function putObservable (client, observable) {
 async function removeObservable (client, observable) {
   console.log(`Removing log group ${observable.logGroup} with filter name ${observable.region}`)
 
-  return client.deleteSubscriptionFilter({
-    filterName: observable.region,
-    logGroupName: observable.logGroup
-  }).promise()
+  try {
+    return await client.deleteSubscriptionFilter({
+      filterName: observable.region,
+      logGroupName: observable.logGroup
+    }).promise()
+  } catch (error) {
+    if (error.code === 'ResourceNotFoundException') {
+      const filters = await findExistingFilters(client, observable.logGroup)
+      const dashbirdFilter = findDashbirdFilter(filters)
+      if (dashbirdFilter) {
+        console.log('Found different dashbird subscription filter, removing it', observable)
+        return client.deleteSubscriptionFilter({
+          filterName: dashbirdFilter.filterName,
+          logGroupName: observable.logGroup
+        }).promise()
+      }
+    }
+
+    throw error
+  }
 }
 
 async function processAllLogGroups (observables) {
@@ -131,7 +162,6 @@ exports.handler = async function (event, context) {
     }
     return updateRoleArn()
   } catch (error) {
-    console.error(error)
     return context.fail(error)
   }
 }
