@@ -17,7 +17,6 @@ async function updateRoleArn () {
   })
 
   if (response.status === 'OK') {
-    console.log('Set role arn, exiting with failure')
     throw new Error('role arn set, retrying')
   }
 }
@@ -27,10 +26,8 @@ async function processLogGroups (client, groups) {
     try {
       let result = null
       if (observable.action.toLowerCase() === 'upsert') {
-        console.log('Upserting', observable)
         result = await upsertObservable(client, observable)
       } else {
-        console.log('Removing', observable)
         result = await removeObservable(client, observable)
       }
       if (result) {
@@ -59,18 +56,14 @@ async function upsertObservable (client, observable) {
 
   if (!existingFilters.length || filter) {
     if (filter && filter.filterName !== observable.region) {
-      console.log('Filter has changed, removing the old filter', observable)
       // Lets force remove the filter before applying a new one
       await removeObservable(client, observable)
     }
     return putObservable(client, observable)
-  } else {
-    console.log(`Log group ${observable.logGroup} has a subscription filter belonging to someone else, skipping.`)
   }
 }
 
 async function logGroupError (err, observable) {
-  console.log(`Reporting error`, err.code, `with observable`, observable)
   const body = {
     name: observable.region,
     arn: observable.destination,
@@ -89,8 +82,6 @@ async function logGroupError (err, observable) {
 }
 
 async function logGroupSuccess (observable) {
-  console.log('Posting results about observable', observable)
-
   return request({
     method: 'POST',
     uri: `${BASE_URL}/${EXTERNAL_ID}/loggroup/${observable.id}`,
@@ -106,8 +97,6 @@ async function logGroupSuccess (observable) {
 }
 
 async function putObservable (client, observable) {
-  console.log(`Adding subscription filter to log group ${observable.logGroup} with filter name ${observable.region}`)
-
   return client.putSubscriptionFilter({
     destinationArn: observable.destination,
     filterName: observable.region,
@@ -118,8 +107,6 @@ async function putObservable (client, observable) {
 }
 
 async function removeObservable (client, observable) {
-  console.log(`Removing log group ${observable.logGroup} with filter name ${observable.region}`)
-
   try {
     return await client.deleteSubscriptionFilter({
       filterName: observable.region,
@@ -130,7 +117,6 @@ async function removeObservable (client, observable) {
       const filters = await findExistingFilters(client, observable.logGroup)
       const dashbirdFilter = findDashbirdFilter(filters)
       if (dashbirdFilter) {
-        console.log('Found different dashbird subscription filter, removing it', observable)
         return client.deleteSubscriptionFilter({
           filterName: dashbirdFilter.filterName,
           logGroupName: observable.logGroup
@@ -144,7 +130,6 @@ async function removeObservable (client, observable) {
 
 async function processAllLogGroups (observables) {
   let regionGroups = _.groupBy(observables, (o) => o.region)
-  console.log(`Client is active, processing ${observables.length} observables.`)
 
   const promises = _.map(regionGroups, async (logGroups, region) => {
     const CWLogs = new AWS.CloudWatchLogs({ region: region })
